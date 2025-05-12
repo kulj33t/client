@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useState , useEffect} from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -12,9 +12,14 @@ import {
 } from "react-native";
 import Svg, { Circle, G, Text as TextSvg } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
+import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import NotificationPanel from "../student-others/notification";
-
+import {
+  registerForPushNotifications,
+  saveTokenToBackend,
+} from "../../utils/notification";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 const subjects = [
   {
     id: 1,
@@ -59,10 +64,44 @@ const subjects = [
 ];
 
 export default function HomeScreen() {
-
+  const [expoPushToken, setExpoPushToken] = useState<string | undefined>("");
+  const notificationListener = useRef<any>();
+  const responseListener = useRef<any>();
   const router = useRouter();
   const [expandedId, setExpandedId] = useState(subjects[0].id);
   const [showNotification, setShowNotification] = useState(false);
+  const getNotificationToken = async () => {
+    const notTokGen = await AsyncStorage.getItem("notTokGen");
+    if (notTokGen === "true") return;
+    try {
+      const token = await registerForPushNotifications();
+      setExpoPushToken(token);
+      const userToken = await AsyncStorage.getItem("token");
+      if (token) {
+        console.log("Push notification token generated:", token);
+        const response = await saveTokenToBackend(token, userToken);
+        console.log(response.statusCode);
+        if (response.statusCode === 200) {
+          await AsyncStorage.setItem("notTokGen", "true");
+        }
+      }
+    } catch (error) {
+      console.error("Error registering for push notifications:", error);
+    }
+  };
+
+  getNotificationToken();
+
+  notificationListener.current = Notifications.addNotificationReceivedListener(
+    (notification) => {
+      console.log("Notification received:", notification);
+    }
+  );
+
+  responseListener.current =
+    Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log("Notification tapped:", response);
+    });
 
   const toggleExpand = (id: number) => setExpandedId(id);
 
@@ -128,7 +167,11 @@ function SubjectTile({
   const strokeWidth = 20;
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.tileWrapper}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.9}
+      style={styles.tileWrapper}
+    >
       <View style={[styles.tile, expanded && styles.tileExpanded]}>
         <View style={styles.tileHeader}>
           <View style={styles.leftSection}>
@@ -137,7 +180,10 @@ function SubjectTile({
             <Text style={styles.subDetails}>{professor}</Text>
 
             {expanded && (
-              <TouchableOpacity style={styles.viewButton} onPress={onViewDetails}>
+              <TouchableOpacity
+                style={styles.viewButton}
+                onPress={onViewDetails}
+              >
                 <Text style={styles.buttonText}>View Details</Text>
               </TouchableOpacity>
             )}

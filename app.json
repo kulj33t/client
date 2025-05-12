@@ -13,6 +13,7 @@
       
     },
     "android": {
+      "useNextNotificationsApi": true,
       "package": "com.kulj33t.AttendX",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
@@ -34,6 +35,13 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
         }
       ]
     ],
