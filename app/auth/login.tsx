@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
-import { useRouter } from "expo-router";
-import React, { use, useEffect, useRef, useState } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Keyboard,
@@ -16,27 +16,15 @@ import {
 import axios from "axios";
 import { useToast } from "react-native-toast-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 export default function LoginScreen() {
   const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || "";
-  const viewAllKeysAndValues = async () => {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const result = await AsyncStorage.multiGet(keys);
-      result.forEach(([key, value]) => {
-        console.log(`${key}: ${value}`);
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-  useEffect(() => {
-    viewAllKeysAndValues();
-  }, []);
-
   const Toast = useToast();
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [isValidEmail, setIsValidEmail] = useState(false);
-  const router = useRouter();
+  const [isSending, setIsSending] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(0.7)).current;
@@ -60,39 +48,46 @@ export default function LoginScreen() {
       }),
     ]).start();
   }, [isValidEmail]);
+
   useEffect(() => {
     const checkLoggedIn = async () => {
       const token = await AsyncStorage.getItem("token");
-
       if (token) {
         const role = await AsyncStorage.getItem("role");
         if (role === "student") router.navigate("/student/home");
         else router.navigate("/teacher/home");
-      } else return false;
+      }
     };
     checkLoggedIn();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      setIsSending(false);
+    }, [])
+  );
+
   const handleContinue = async () => {
-    if (isValidEmail) {
-      try {
-        const response = await axios.post(
-          `${API_BASE_URL}/api/v1/user/loginOtpSend`,
-          { email }
-        );
-        console.log(response);
-        if (response.status === 200) {
-          router.push({
-            pathname: "/auth/otp",
-            params: { email },
-          });
-        }
-      } catch (error: any) {
-        Toast.show(error.response.data.message, {
-          type: "danger",
-          placement: "top",
+    if (!isValidEmail || isSending) return;
+
+    setIsSending(true);
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/v1/user/loginOtpSend`,
+        { email }
+      );
+      if (response.status === 200) {
+        router.push({
+          pathname: "/auth/otp",
+          params: { email },
         });
       }
+    } catch (error: any) {
+      Toast.show(error.response?.data?.message || "Something went wrong", {
+        type: "danger",
+        placement: "top",
+      });
+      setIsSending(false); // Allow retry
     }
   };
 
@@ -127,18 +122,21 @@ export default function LoginScreen() {
                   {
                     opacity: opacityAnim,
                     transform: [{ scale: scaleAnim }],
-                    backgroundColor: isValidEmail
-                      ? "#e55373"
-                      : "rgba(229, 83, 115, 0.7)",
+                    backgroundColor:
+                      isValidEmail && !isSending
+                        ? "#e55373"
+                        : "rgba(229, 83, 115, 0.7)",
                   },
                 ]}
               >
                 <TouchableOpacity
                   onPress={handleContinue}
-                  disabled={!isValidEmail}
+                  disabled={!isValidEmail || isSending}
                   style={styles.touchable}
                 >
-                  <Text style={styles.buttonText}>Send OTP</Text>
+                  <Text style={styles.buttonText}>
+                    {isSending ? "Sending OTP..." : "Send OTP"}
+                  </Text>
                 </TouchableOpacity>
               </Animated.View>
             </View>
