@@ -7,7 +7,7 @@ import {
   FlatList,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
@@ -24,21 +24,60 @@ interface student {
   name: string;
   status: string;
 }
+
 const RADIUS = 65;
 const STROKE_WIDTH = 10;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-const dummyStudents = Array(5).fill({
-  name: "FirstName LastName",
-  regNo: "Reg No",
-});
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+const AnimatedButton = ({
+  onPress,
+  children,
+  style,
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style: any;
+}) => {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 3,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+    onPress();
+  };
+
+  return (
+    <TouchableWithoutFeedback
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+    >
+      <Animated.View style={[style, { transform: [{ scale }] }]}>
+        {children}
+      </Animated.View>
+    </TouchableWithoutFeedback>
+  );
+};
 
 export default function AttendanceScreen() {
+  const [attendanceSaved, setAttendanceSaved] = useState(false);
   const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || "";
   const router = useRouter();
   const [attendanceState, setAttendanceState] =
     useState<AttendanceState>("idle");
-  const [timer, setTimer] = useState(180); // in seconds
+  const [timer, setTimer] = useState(180);
   const [markedPresent, setMarkedPresent] = useState(17);
   const totalStudents = 86;
   const [location, setLocation] = useState({ latitude: 0, longitude: 0 });
@@ -75,13 +114,14 @@ export default function AttendanceScreen() {
       }
     })();
   }, []);
+
   const formatTime = (sec: number) => {
     const minutes = Math.floor(sec / 60);
     const seconds = sec % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const renderStudent = ({ item }: { item: Student }) => (
+  const renderStudent = ({ item }: { item: student }) => (
     <View style={styles.studentCard}>
       <View style={{ flexDirection: "column", marginLeft: 10 }}>
         <Text>{item.name}</Text>
@@ -91,16 +131,13 @@ export default function AttendanceScreen() {
           Status: {item.status}
         </Text>
       </View>
-
-      <View>
-        <BouncyCheckbox
-          size={25}
-          fillColor="#4CAF50"
-          iconStyle={{ borderColor: "#4CAF50" }}
-          isChecked={item.status === "present"}
-          onPress={() => alterRecord(item.id)}
-        />
-      </View>
+      <BouncyCheckbox
+        size={25}
+        fillColor="#4CAF50"
+        iconStyle={{ borderColor: "#4CAF50" }}
+        isChecked={item.status === "present"}
+        onPress={() => alterRecord(item.id)}
+      />
     </View>
   );
 
@@ -124,8 +161,7 @@ export default function AttendanceScreen() {
           teacherLongitude: String(coords.longitude),
         }
       );
-      console.log("API Response:", JSON.stringify(response.data, null, 2));
-      // Only update state if the API call was successful
+
       Toast.show("Attendance session started successfully!", {
         type: "success",
         placement: "top",
@@ -135,8 +171,6 @@ export default function AttendanceScreen() {
       setTimer(180);
       animatedValue.setValue(0);
     } catch (error: any) {
-      console.log(error.response);
-      console.log("err");
       Toast.show(
         "Failed to start attendance: " +
           (error.response?.data?.message || error.message),
@@ -148,72 +182,55 @@ export default function AttendanceScreen() {
       );
     }
   };
+
   const handleStopAttendance = async () => {
     try {
       const token = await AsyncStorage.getItem("token");
       const response = await axios.post(
         `${API_BASE_URL}/api/v1/attendance/endSession`,
-        {
-          token,
-        }
+        { token }
       );
       setAttendanceState("completed");
       setRecord(response.data.data.combinedList);
       setAttendanceId(response.data.data.attendanceId);
-      console.log(
-        "API Response at stop:",
-        JSON.stringify(response?.data, null, 2)
-      );
     } catch (error: any) {
       console.log(error.response.data);
     }
   };
+
   const handleSaveAttedance = async () => {
     try {
-      console.log("trying");
-
       const response = await axios.post(
         `${API_BASE_URL}/api/v1/attendance/storeRecords`,
-        { attendanceRecords: record, attendanceId: attendanceId }
+        { attendanceRecords: record, attendanceId }
       );
-      console.log(response);
-      router.replace("/teacher/home");
+      Toast.show("Attendance saved successfully!", {
+        type: "success",
+        placement: "top",
+      });
+      setAttendanceSaved(true);
     } catch (error: any) {
-      console.log(error.response);
+      console.log(error.response.data);
     }
   };
-  useEffect(() => {
-    console.log(record);
-  }, [record]);
-  useEffect(() => {
-    console.log(attendanceId);
-  }, [attendanceId]);
+
   const alterRecord = (id: string) => {
-    setRecord((currentRecord) => {
-      // Create a new array to avoid mutating state directly
-      return currentRecord.map((student) => {
-        if (student.id === id) {
-          // Toggle the status for the matching student
-          return {
-            ...student,
-            status: student.status === "absent" ? "present" : "absent",
-          };
-        }
-        // Return other students unchanged
-        return student;
-      });
-    });
+    setRecord((current) =>
+      current.map((student) =>
+        student.id === id
+          ? { ...student, status: student.status === "absent" ? "present" : "absent" }
+          : student
+      )
+    );
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Take Attendance</Text>
       </View>
-      {/* Spacer below header */}
       <View style={{ height: 80 }} />
-      {/* Timer / Checkmark */}
+
       <View style={styles.circleWrapper}>
         {attendanceState === "completed" ? (
           <Ionicons name="checkmark-done-outline" size={80} color="#bbb" />
@@ -251,56 +268,53 @@ export default function AttendanceScreen() {
           </>
         )}
       </View>
-      {/* Spacer below timer */}
+
       <View style={{ height: 20 }} />
       {(attendanceState === "idle" || attendanceState === "inProgress") && (
         <>
-          <Text style={styles.info}>Branch : CSE</Text>
-          <Text style={styles.info}>Sem: III</Text>
-          <Text style={styles.info}>Subject: OOPS</Text>
+          <Text style={styles.info}>Branch: {branch}</Text>
+          <Text style={styles.info}>Sem: {semester}</Text>
+          <Text style={styles.info}>Subject: {subject}</Text>
         </>
       )}
-      ` `
+
       <View style={styles.buttonGroup}>
         {attendanceState === "idle" && (
           <>
-            <TouchableOpacity
-              style={styles.startButton}
-              onPress={() => {
-                handleStartAttendance();
-              }}
-            >
+            <AnimatedButton onPress={handleStartAttendance} style={styles.startButton}>
               <Text style={styles.buttonText}>Start Attendance</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.homeButton}
+            </AnimatedButton>
+            <AnimatedButton
               onPress={() => router.replace("/teacher/home")}
+              style={styles.homeButton}
             >
               <Text style={styles.buttonText}>Back To Home</Text>
-            </TouchableOpacity>
+            </AnimatedButton>
           </>
         )}
 
         {attendanceState === "inProgress" && (
-          <TouchableOpacity
-            style={styles.stopButton}
-            onPress={handleStopAttendance}
-          >
+          <AnimatedButton onPress={handleStopAttendance} style={styles.stopButton}>
             <Text style={styles.buttonText}>Stop Attendance</Text>
-          </TouchableOpacity>
+          </AnimatedButton>
         )}
 
-        {attendanceState === "completed" && (
-          <>
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveAttedance}
-            >
-              <Text style={styles.buttonText}>Save Attendance</Text>
-            </TouchableOpacity>
-          </>
+        {attendanceState === "completed" && !attendanceSaved && (
+          <AnimatedButton onPress={handleSaveAttedance} style={styles.saveButton}>
+            <Text style={styles.buttonText}>Save Attendance</Text>
+          </AnimatedButton>
+        )}
+
+        {attendanceState === "completed" && attendanceSaved && (
+          <AnimatedButton
+            onPress={() => router.replace("/teacher/home")}
+            style={styles.homeButton}
+          >
+            <Text style={styles.buttonText}>Back To Home</Text>
+          </AnimatedButton>
         )}
       </View>
+
       {attendanceState === "completed" && (
         <>
           <Text style={styles.subHeading}>List of Students</Text>
@@ -315,8 +329,6 @@ export default function AttendanceScreen() {
     </View>
   );
 }
-
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const styles = StyleSheet.create({
   container: {
@@ -373,13 +385,6 @@ const styles = StyleSheet.create({
     width: "80%",
     borderRadius: 20,
     marginTop: 10,
-  },
-  editButton: {
-    backgroundColor: "#FF4D6D",
-    padding: 15,
-    width: "80%",
-    borderRadius: 20,
-    marginBottom: 10,
   },
   saveButton: {
     backgroundColor: "#FF4D6D",
