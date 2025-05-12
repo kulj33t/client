@@ -34,11 +34,12 @@ const dummyStudents = Array(5).fill({
 });
 
 export default function AttendanceScreen() {
+  const [attendanceSaved, setAttendanceSaved] = useState(false);
   const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || "";
   const router = useRouter();
   const [attendanceState, setAttendanceState] =
     useState<AttendanceState>("idle");
-  const [timer, setTimer] = useState(180); // in seconds
+  const [timer, setTimer] = useState(180);
   const [markedPresent, setMarkedPresent] = useState(17);
   const totalStudents = 86;
   const [location, setLocation] = useState({ latitude: 0, longitude: 0 });
@@ -81,7 +82,7 @@ export default function AttendanceScreen() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const renderStudent = ({ item }: { item: Student }) => (
+  const renderStudent = ({ item }: { item: student }) => (
     <View style={styles.studentCard}>
       <View style={{ flexDirection: "column", marginLeft: 10 }}>
         <Text>{item.name}</Text>
@@ -125,7 +126,6 @@ export default function AttendanceScreen() {
         }
       );
       console.log("API Response:", JSON.stringify(response.data, null, 2));
-      // Only update state if the API call was successful
       Toast.show("Attendance session started successfully!", {
         type: "success",
         placement: "top",
@@ -136,7 +136,6 @@ export default function AttendanceScreen() {
       animatedValue.setValue(0);
     } catch (error: any) {
       console.log(error.response);
-      console.log("err");
       Toast.show(
         "Failed to start attendance: " +
           (error.response?.data?.message || error.message),
@@ -169,17 +168,22 @@ export default function AttendanceScreen() {
     }
   };
   const handleSaveAttedance = async () => {
-    try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/v1/attendance/storeRecords`,
-        { attendanceRecords: record, attendanceId: attendanceId }
-      );
-      console.log(response.data);
-      router.replace("/teacher/home");
-    } catch (error: any) {
-      console.log(error.response.data);
-    }
-  };
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/api/v1/attendance/storeRecords`,
+      { attendanceRecords: record, attendanceId: attendanceId }
+    );
+    console.log(response.data);
+    Toast.show("Attendance saved successfully!", {
+      type: "success",
+      placement: "top",
+    });
+    setAttendanceSaved(true);
+  } catch (error: any) {
+    console.log(error.response.data);
+  }
+};
+
   useEffect(() => {
     console.log(record);
   }, [record]);
@@ -187,20 +191,17 @@ export default function AttendanceScreen() {
     console.log(attendanceId);
   }, [attendanceId]);
   const alterRecord = (id: string) => {
-    setRecord((currentRecord) => {
-      // Create a new array to avoid mutating state directly
-      return currentRecord.map((student) => {
+    setRecord((currentRecord) =>
+      currentRecord.map((student) => {
         if (student.id === id) {
-          // Toggle the status for the matching student
           return {
             ...student,
             status: student.status === "absent" ? "present" : "absent",
           };
         }
-        // Return other students unchanged
         return student;
-      });
-    });
+      })
+    );
   };
 
   return (
@@ -209,7 +210,6 @@ export default function AttendanceScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Take Attendance</Text>
       </View>
-      {/* Spacer below header */}
       <View style={{ height: 80 }} />
       {/* Timer / Checkmark */}
       <View style={styles.circleWrapper}>
@@ -249,16 +249,14 @@ export default function AttendanceScreen() {
           </>
         )}
       </View>
-      {/* Spacer below timer */}
       <View style={{ height: 20 }} />
       {(attendanceState === "idle" || attendanceState === "inProgress") && (
-        <>
-          <Text style={styles.info}>Branch : CSE</Text>
-          <Text style={styles.info}>Sem: III</Text>
-          <Text style={styles.info}>Subject: OOPS</Text>
-        </>
-      )}
-      ` `
+  <>
+    <Text style={styles.info}>Branch: {branch}</Text>
+    <Text style={styles.info}>Sem: {semester}</Text>
+    <Text style={styles.info}>Subject: {subject}</Text>
+  </>
+)}
       <View style={styles.buttonGroup}>
         {attendanceState === "idle" && (
           <>
@@ -288,16 +286,21 @@ export default function AttendanceScreen() {
           </TouchableOpacity>
         )}
 
-        {attendanceState === "completed" && (
-          <>
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveAttedance}
-            >
-              <Text style={styles.buttonText}>Save Attendance</Text>
-            </TouchableOpacity>
-          </>
-        )}
+       {attendanceState === "completed" && !attendanceSaved && (
+  <TouchableOpacity style={styles.saveButton} onPress={handleSaveAttedance}>
+    <Text style={styles.buttonText}>Save Attendance</Text>
+  </TouchableOpacity>
+)}
+
+{attendanceState === "completed" && attendanceSaved && (
+  <TouchableOpacity
+    style={styles.homeButton}
+    onPress={() => router.replace("/teacher/home")}
+  >
+    <Text style={styles.buttonText}>Back To Home</Text>
+  </TouchableOpacity>
+)}
+
       </View>
       {attendanceState === "completed" && (
         <>
